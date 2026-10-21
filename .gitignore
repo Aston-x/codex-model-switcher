@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# 插件运行期产物
+*.lock
+*.bak
+*.tmp
+*.log
+*.pyc
+
+# 备份文件（switcher / 守护进程会写 .bak-guard 等）
+*.bak-guard
+*.tmp-guard
+config.toml.bak*
+
+# 编辑器
+.vscode/
+.idea/
+.DS_Store

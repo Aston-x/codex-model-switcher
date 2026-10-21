@@ -1,0 +1,4 @@
+interface:
+  display_name: "Model Switcher"
+  short_description: "填 API key、一键接入模型、切换默认模型、换动态壁纸"
+  default_prompt: "Use $model-switcher to fill in an API key and connect a model provider (DeepSeek / Kimi / 智谱GLM / 硅基流动), switch the default model, list available models, or change the dynamic wallpaper. I can say things like 「用 Kimi，key 是 sk-xxx」or「换成 deepseek-v4-pro」or「换个壁纸」."

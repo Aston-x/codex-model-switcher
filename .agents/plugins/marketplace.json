@@ -1,0 +1,20 @@
+{
+  "name": "codex-model-switcher",
+  "interface": {
+    "displayName": "Codex 模型切换器"
+  },
+  "plugins": [
+    {
+      "name": "model-switcher",
+      "source": {
+        "source": "local",
+        "path": "./"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

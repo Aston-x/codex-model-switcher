@@ -1,0 +1,37 @@
+{
+  "mcpServers": {
+    "model_switcher": {
+      "args": [
+        "scripts/launch_model_switcher.sh"
+      ],
+      "command": "bash",
+      "cwd": ".",
+      "enabled": true,
+      "default_tools_approval_mode": "auto",
+      "tools": {
+        "switch_model": {
+          "approval_mode": "prompt"
+        },
+        "add_provider": {
+          "approval_mode": "prompt"
+        },
+        "delete_provider": {
+          "approval_mode": "prompt"
+        }
+      },
+      "env_vars": [
+        "PATH",
+        "USERPROFILE",
+        "LOCALAPPDATA",
+        "APPDATA",
+        "TEMP",
+        "TMP",
+        "CODEX_APP_TOOLS_PIPE_PATH",
+        "CODEX_CLI_PATH",
+        "CODEX_HOME"
+      ],
+      "startup_timeout_sec": 30,
+      "tool_timeout_sec": 120
+    }
+  }
+}

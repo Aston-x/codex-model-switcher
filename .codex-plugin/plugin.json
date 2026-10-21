@@ -1,0 +1,11 @@
+{
+  "name": "model-switcher",
+  "version": "1.2.0",
+  "mcpServers": "./.mcp.json",
+  "description": "在 Codex 内管理模型来源与运行参数：接 API key、一键接入 DeepSeek/Kimi/智谱GLM/硅基流动/MiniMax、切换模型、修正 provider 错配、按模型真实档位设置推理等级与上下文长度。",
+  "author": {
+    "name": "jiyii"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/jiyii/codex-model-switcher"
+}
