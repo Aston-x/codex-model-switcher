@@ -254,7 +254,7 @@ MODEL_SWITCHER_TEST_KEY=sk-xxx python tests/smoke_test.py   # 带真 key（含�
 ## English
 
 ```
-use deepseek, key is sk-xxx
+use deepseek, read the key from the clipboard without echoing it 
 set reasoning effort to max
 can I use this provider?
 which models are deprecated?
