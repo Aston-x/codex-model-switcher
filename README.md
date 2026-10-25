@@ -13,7 +13,7 @@ Pure plugin (MCP + Skill). No injection, no proxy, no patching of the client bin
 ## 中文
 
 ```
-用 deepseek，key 是 sk-xxx
+用 deepseek，key在剪贴板中,进行读取且不回显
 推理等级调到 max
 这家厂商能不能接？
 哪些模型下线了？
