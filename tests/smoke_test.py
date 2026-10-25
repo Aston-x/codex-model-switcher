@@ -281,6 +281,53 @@ def main():
     except Exception as e:
         bad("下线公告核查", repr(e))
 
+    # ---------- 11) 剪贴板通道（key 不进对话与工具参数） ----------
+    section("11. 剪贴板通道（读得到 / 用完即清 / 返回值不含明文）")
+    saved = None
+    fake = "FAKE_KEY_smoketest_0123456789abcdef"
+    try:
+        import platform_compat as pc
+        backend = pc.clipboard_backend()
+        if not backend:
+            skip("剪贴板通道", "本机没有可用的剪贴板后端")
+        else:
+            saved = pc.read_clipboard_text()          # 先保存用户原剪贴板
+            pc.write_clipboard_text(fake)             # 写入假 key
+            got = pc.read_clipboard_text()
+            if got and got.strip() == fake:
+                ok("剪贴板写入后读回一致", "后端 %s" % backend)
+            else:
+                bad("剪贴板写入后读回一致", "后端 %s" % backend)
+            try:
+                server.set_api_key_from_clipboard("SMOKE_TEST_KEY",
+                                                 storage_mode="inline")
+            except Exception as e:
+                bad("set_api_key_from_clipboard 可调用", repr(e)[:200])
+            after = pc.read_clipboard_text()
+            if after is None or after.strip() == "":
+                ok("用完自动清空剪贴板")
+            else:
+                bad("用完自动清空剪贴板", "仍有内容")
+            try:
+                pc.write_clipboard_text(fake)
+                r = server.set_api_key_from_clipboard("SMOKE_TEST_KEY2",
+                                                     storage_mode="inline")
+                if fake in r:
+                    bad("返回值不含明文 key", "返回里出现了 key！")
+                else:
+                    ok("返回值不含明文 key")
+            except Exception as e:
+                bad("返回值不含明文 key", repr(e)[:200])
+    except Exception as e:
+        bad("剪贴板通道", repr(e))
+    finally:
+        try:
+            import platform_compat as pc
+            if saved is not None:
+                pc.write_clipboard_text(saved)
+        except Exception:
+            pass
+
     return finish(tmp)
 
 

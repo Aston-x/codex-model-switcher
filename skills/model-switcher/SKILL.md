@@ -16,8 +16,9 @@ description: "在 Codex 里接 API key、切模型、修 provider 错配、查�
 
 | 用户的话 | 调这个 |
 |---|---|
-| 「用 Kimi，key 是 sk-xxx」「接一下智谱 GLM」 | `setup_preset(preset, api_key)` |
-| 「把 MOONSHOT_API_KEY 设成 sk-xxx」 | `set_api_key(env_key_name, api_key, storage_mode, provider_id)` |
+| 「用 Kimi」「接一下智谱 GLM」（用户已把 key 复制到剪贴板） | **`setup_preset_from_clipboard(preset)`** —— 见下方「API key：走剪贴板」 |
+| 「从剪贴板更新 DEEPSEEK_API_KEY」 | **`set_api_key_from_clipboard(env_key_name)`** |
+| 「用 Kimi，key 是 sk-xxx」（key 贴在对话里了） | 先提醒**吊销并重签**，再走剪贴板流程 |
 | 「换成 deepseek-v4-pro」 | `switch_model("deepseek", "deepseek-v4-pro")` |
 | 「现在用的什么模型」 | `list_providers()` |
 | 「Kimi 有哪些模型」 | `discover_models(base_url, env_key=...)` |
@@ -32,9 +33,33 @@ description: "在 Codex 里接 API key、切模型、修 provider 错配、查�
 | 「把这个模型藏起来 / 放回来」 | `set_model_visibility(slug, visible)` |
 | **「这个厂商哪些模型下线了」「接之前先查下架公告」** | **`check_provider_deprecations(provider_id)`** |
 
+## 🔒 API key：走剪贴板，不要贴进对话
+
+**API key 绝不能作为聊天明文或 MCP 工具参数传递** —— 那等于把长期有效的密钥
+写进了对话记录和工具日志里，事后很难清干净。
+
+正确流程：
+
+1. 用户在厂商控制台复制 key 到剪贴板；
+2. 用户只对 agent 说「**从剪贴板更新 DEEPSEEK_API_KEY**」；
+3. agent 调 `setup_preset_from_clipboard(preset)` 或
+   `set_api_key_from_clipboard(env_key_name)`——
+   **工具参数里没有任何密钥**，key 由插件从本机剪贴板读出来，
+   直接写进 `config.toml`，然后**立刻清空剪贴板**；
+4. 输出只给长度与连通性验证，**不回显 key**。
+
+对应地：
+
+- `setup_preset(preset, api_key)` / `set_api_key(..., api_key, ...)` 这两个**明文版**
+  只在用户明确要求时用（比如 key 来自脚本/环境变量而不是人复制）。
+- 用户已经把 key 贴在对话里了 → **先提醒他去厂商控制台吊销并重签**，
+  再走剪贴板流程。已经进对话记录的 key 视为已泄露。
+- 剪贴板后端是否可用，用 `python doctor.py` 能查（只查后端，不读内容）。
+
 ### `setup_preset` —— 最常用的一步到位
 
-preset 取值：**deepseek / minimax / kimi / glm / mimo / siliconflow / moonshot / dashscope / openrouter**
+preset 取值：**deepseek / minimax / kimi / glm / mimo / siliconflow / dashscope / openrouter**
+（`moonshot` 已删：`moonshot-v1-*` 全线 2026-08-31 下线，且与 `kimi` 同 base_url 纯冗余）
 
 它一次做完六件事：
 1. `setx` 写用户级环境变量（供 CLI 使用）

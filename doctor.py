@@ -374,6 +374,27 @@ def model_owner(model):
     return None
 
 
+def check_clipboard(rep):
+    """剪贴板后端是否可用（**只查后端，不读内容**）。
+
+    剪贴板是 API key 的安全交接通道（key 不进对话与工具参数），
+    后端不可用就等于这条路走不通，必须让用户知道。
+    """
+    try:
+        backend = pc.clipboard_backend()
+    except Exception as e:
+        rep.warn("剪贴板后端检测失败", repr(e),
+                 "剪贴板接入密钥会不可用")
+        return
+    if backend:
+        rep.ok("剪贴板后端", "%s 可用（API key 可走剪贴板交接，不进对话记录）" % backend)
+    else:
+        rep.warn("没有可用的剪贴板后端",
+                 "Windows 走 Win32 API（无需装东西）；macOS 需 pbpaste（系统自带）；"
+                 "Linux 需装 wl-paste / xclip / xsel 之一",
+                 "装剪贴板工具，或改用明文方式传 key（会进对话记录）")
+
+
 def check_install(rep, fix):
     inst = find_installed_plugin()
     if not inst:
@@ -496,6 +517,7 @@ def run_doctor(fix=False, want_json=False, do_autostart=True):
     check_python(rep)
     check_mcp(rep, fix)
     check_mcp_json(rep, fix)
+    check_clipboard(rep)
     check_config(rep, fix)
     check_install(rep, fix)
     if do_autostart:

@@ -326,6 +326,9 @@ def set_api_key(env_key_name: str, api_key: str,
 
     ⚠️ 关于安全性：inline 会把 key 明文写进 config.toml（可能被分享/提交 git）。
        若要兼顾，可两种都写：inline 保证桌面版可用，env 供 CLI 使用。
+    ⚠️ **本工具的 key 走的是聊天明文 / MCP 工具参数**，会进对话记录与工具日志。
+       除非用户明确要求用明文方式，否则**优先用 `set_api_key_from_clipboard`**
+       （工具参数里不含密钥，key 从本机剪贴板读，用完立刻清空剪贴板）。
     """
     if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", env_key_name):
         raise RuntimeError("环境变量名只能含字母数字下划线，且不能以数字开头")
@@ -658,6 +661,83 @@ def check_provider_deprecations(provider_id: str, models: str = "") -> str:
     return "\n".join(lines)
 
 
+def _read_secret_from_clipboard():
+    """从本机剪贴板读取密钥。返回 (key, 说明)。
+
+    ⚠️ 返回的 key **绝不能**出现在工具返回值、日志或异常信息里 ——
+    它只应流向「写进 config.toml」这一步。
+    """
+    backend = platform_compat.clipboard_backend()
+    if not backend:
+        return None, ("本机没有可用的剪贴板后端：Windows 走 Win32 API；"
+                      "macOS 需要 pbpaste；Linux 需要 wl-paste / xclip / xsel")
+    text = platform_compat.read_clipboard_text()
+    if text is None:
+        return None, "读不到剪贴板内容（可能没有文本，或剪贴板正被别的程序占用）"
+    key = text.strip()
+    if not key:
+        return None, "剪贴板是空的"
+    return key, backend
+
+
+def setup_preset_from_clipboard(preset: str, model: str = "",
+                                make_default: bool = True,
+                                storage_mode: str = "inline") -> str:
+    """从**本机剪贴板**读取 API key 来一键接入某个模型提供方。
+
+    为什么要有这个版本：API key 走聊天明文或 MCP 工具参数，
+    会进对话记录与工具日志 —— 那等于把长期有效的密钥存进了历史里。
+    这个版本的**工具参数里没有任何密钥**，key 只在本机内存里
+    从剪贴板读到、写进 `config.toml`，然后**立刻清空剪贴板**。
+
+    用法：
+      1. 用户在厂商控制台复制 key
+      2. 用户只对 agent 说「从剪贴板更新 DEEPSEEK_API_KEY」
+      3. agent 调本工具
+      4. 输出只报长度与连通性验证，**不回显 key**
+    """
+    key, info = _read_secret_from_clipboard()
+    if key is None:
+        raise RuntimeError(info)
+    cleared = False
+    try:
+        body = setup_preset(preset, key, model=model, make_default=make_default,
+                            storage_mode=storage_mode)
+    finally:
+        cleared = platform_compat.clear_clipboard()
+    return ("已从剪贴板读取密钥（长度 %d，来源 %s）%s\n%s"
+            % (len(key), info,
+               "，剪贴板已清空" if cleared else
+               "，**剪贴板清空失败，请手动清空剪贴板**",
+               body))
+
+
+def set_api_key_from_clipboard(env_key_name: str,
+                               storage_mode: str = "inline",
+                               provider_id: str = "") -> str:
+    """从**本机剪贴板**读取 API key 并写入 provider（工具参数里不含密钥）。
+
+    用途与 `setup_preset_from_clipboard` 相同：给某个已配置的 provider
+    换 key、或补一个还没接入的厂商的 key。
+
+    读到的 key 用完立刻清空剪贴板，输出只报长度。
+    """
+    key, info = _read_secret_from_clipboard()
+    if key is None:
+        raise RuntimeError(info)
+    cleared = False
+    try:
+        body = set_api_key(env_key_name, key, storage_mode=storage_mode,
+                           provider_id=provider_id)
+    finally:
+        cleared = platform_compat.clear_clipboard()
+    return ("已从剪贴板读取密钥（长度 %d，来源 %s）%s\n%s"
+            % (len(key), info,
+               "，剪贴板已清空" if cleared else
+               "，**剪贴板清空失败，请手动清空剪贴板**",
+               body))
+
+
 def setup_preset(preset: str, api_key: str, model: str = "", make_default: bool = True,
                  storage_mode: str = "inline") -> str:
     """一键接入某个模型提供方：写 API key -> 建 provider -> 设为默认 -> 登记到桌面版模型目录。
@@ -680,6 +760,10 @@ def setup_preset(preset: str, api_key: str, model: str = "", make_default: bool 
     已下线的模型名不会被写进 provider 块，也不会被登记进模型目录。
 
     这一步做完，Codex 桌面版就能用这个模型了（需完全退出重开一次）。
+
+    ⚠️ **本工具的 key 走的是聊天明文 / MCP 工具参数**，会进对话记录与工具日志。
+       除非用户明确要求用明文方式，否则**优先用 `setup_preset_from_clipboard`**
+       （工具参数里不含密钥，key 从本机剪贴板读，用完立刻清空剪贴板）。
     """
     key = (preset or "").strip().lower()
     if key not in PRESETS:
@@ -2058,7 +2142,9 @@ def main():
     mcp.tool()(check_provider_protocol)
     mcp.tool()(test_provider)
     mcp.tool()(set_api_key)
+    mcp.tool()(set_api_key_from_clipboard)
     mcp.tool()(setup_preset)
+    mcp.tool()(setup_preset_from_clipboard)
     mcp.tool()(check_provider_deprecations)
     mcp.tool()(fix_provider_alignment)
     mcp.tool()(list_model_capabilities)

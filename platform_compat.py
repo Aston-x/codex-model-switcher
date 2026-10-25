@@ -327,6 +327,201 @@ def set_user_env(name, value):
 
 
 # ---------------------------------------------------------------------------
+# 剪贴板（API key 安全交接用）
+# ---------------------------------------------------------------------------
+
+def _win_clipboard_get():
+    import ctypes
+    CF_UNICODETEXT = 13
+    user32 = ctypes.windll.user32
+    kernel32 = ctypes.windll.kernel32
+    # ⚠️ 64 位下必须显式声明 restype：
+    #    GetClipboardData / GlobalLock 默认返回 c_int，句柄会被截断成 0，
+    #    表现为「剪贴板永远读不到」（2026-10-25 实测踩过）。
+    user32.GetClipboardData.restype = ctypes.c_void_p
+    user32.GetClipboardData.argtypes = [ctypes.c_uint]
+    kernel32.GlobalLock.restype = ctypes.c_void_p
+    kernel32.GlobalLock.argtypes = [ctypes.c_void_p]
+    kernel32.GlobalUnlock.argtypes = [ctypes.c_void_p]
+    kernel32.GlobalUnlock.restype = ctypes.c_int
+    if not user32.OpenClipboard(None):
+        return None
+    try:
+        h = user32.GetClipboardData(CF_UNICODETEXT)
+        if not h:
+            return None
+        ptr = kernel32.GlobalLock(h)
+        if not ptr:
+            return None
+        try:
+            return ctypes.c_wchar_p(ptr).value
+        finally:
+            kernel32.GlobalUnlock(h)
+    except Exception:
+        return None
+    finally:
+        try:
+            user32.CloseClipboard()
+        except Exception:
+            pass
+
+
+def _win_clipboard_clear():
+    import ctypes
+    user32 = ctypes.windll.user32
+    if not user32.OpenClipboard(None):
+        return False
+    try:
+        user32.EmptyClipboard()
+        return True
+    finally:
+        try:
+            user32.CloseClipboard()
+        except Exception:
+            pass
+
+
+def clipboard_backend():
+    """返回本机可用的剪贴板后端名（用于诊断）。"""
+    if IS_WINDOWS:
+        return "win32"
+    if IS_MACOS:
+        return "pbpaste" if shutil.which("pbpaste") else ""
+    for c in ("wl-paste", "xclip", "xsel"):
+        if shutil.which(c):
+            return c
+    return ""
+
+
+def read_clipboard_text():
+    """读剪贴板纯文本。拿不到返回 None。
+
+    ⚠️ 调用方**绝不能**把返回值放进工具返回值、日志或异常信息 ——
+    密钥只应流向「写进 config.toml」这一步。
+    """
+    backend = clipboard_backend()
+    try:
+        if backend == "win32":
+            return _win_clipboard_get()
+        if backend == "pbpaste":
+            p = subprocess.run(["pbpaste"], capture_output=True, text=True,
+                               encoding="utf-8", errors="replace", timeout=15)
+            return p.stdout if p.returncode == 0 else None
+        if backend == "wl-paste":
+            p = subprocess.run(["wl-paste", "--no-newline"], capture_output=True,
+                               text=True, encoding="utf-8", errors="replace",
+                               timeout=15)
+            return p.stdout if p.returncode == 0 else None
+        if backend == "xclip":
+            p = subprocess.run(["xclip", "-selection", "clipboard", "-o"],
+                               capture_output=True, text=True, encoding="utf-8",
+                               errors="replace", timeout=15)
+            return p.stdout if p.returncode == 0 else None
+        if backend == "xsel":
+            p = subprocess.run(["xsel", "-b"], capture_output=True, text=True,
+                               encoding="utf-8", errors="replace", timeout=15)
+            return p.stdout if p.returncode == 0 else None
+    except Exception:
+        return None
+    return None
+
+
+def _win_clipboard_set(text):
+    import ctypes
+    CF_UNICODETEXT = 13
+    GMEM_MOVEABLE = 0x0002
+    user32 = ctypes.windll.user32
+    kernel32 = ctypes.windll.kernel32
+    kernel32.GlobalAlloc.restype = ctypes.c_void_p
+    kernel32.GlobalAlloc.argtypes = [ctypes.c_uint, ctypes.c_size_t]
+    kernel32.GlobalLock.restype = ctypes.c_void_p
+    kernel32.GlobalLock.argtypes = [ctypes.c_void_p]
+    kernel32.GlobalUnlock.restype = ctypes.c_int
+    kernel32.GlobalUnlock.argtypes = [ctypes.c_void_p]
+    user32.SetClipboardData.restype = ctypes.c_void_p
+    user32.SetClipboardData.argtypes = [ctypes.c_uint, ctypes.c_void_p]
+    if not user32.OpenClipboard(None):
+        return False
+    try:
+        user32.EmptyClipboard()
+        buf = ctypes.create_unicode_buffer(text)
+        size = ctypes.sizeof(buf)
+        h = kernel32.GlobalAlloc(GMEM_MOVEABLE, size)
+        if not h:
+            return False
+        ptr = kernel32.GlobalLock(h)
+        if not ptr:
+            return False
+        try:
+            ctypes.memmove(ptr, buf, size)
+        finally:
+            kernel32.GlobalUnlock(h)
+        user32.SetClipboardData(CF_UNICODETEXT, h)
+        return True
+    except Exception:
+        return False
+    finally:
+        try:
+            user32.CloseClipboard()
+        except Exception:
+            pass
+
+
+def write_clipboard_text(text):
+    """写文本到剪贴板。返回是否成功。
+
+    主要给自测用（写入假 key 验证通道），以及需要把内容**放回**剪贴板时用。
+    """
+    backend = clipboard_backend()
+    try:
+        if backend == "win32":
+            return _win_clipboard_set(text)
+        if backend == "pbpaste":
+            p = subprocess.run(["pbcopy"], input=text, text=True, timeout=15)
+            return p.returncode == 0
+        if backend == "wl-paste":
+            p = subprocess.run(["wl-copy"], input=text, text=True, timeout=15)
+            return p.returncode == 0
+        if backend == "xclip":
+            p = subprocess.run(["xclip", "-selection", "clipboard", "-i"],
+                              input=text, text=True, timeout=15)
+            return p.returncode == 0
+        if backend == "xsel":
+            p = subprocess.run(["xsel", "-b", "-i"], input=text, text=True,
+                               timeout=15)
+            return p.returncode == 0
+    except Exception:
+        return False
+    return False
+
+
+def clear_clipboard():
+    """清空剪贴板（读完密钥立刻调用）。返回是否成功。"""
+    backend = clipboard_backend()
+    try:
+        if backend == "win32":
+            return _win_clipboard_clear()
+        if backend == "pbpaste":
+            p = subprocess.run(["pbcopy"], input="", text=True, timeout=15)
+            return p.returncode == 0
+        if backend == "wl-paste":
+            p = subprocess.run(["wl-copy", "--clear"], capture_output=True,
+                               timeout=15)
+            return p.returncode == 0
+        if backend == "xclip":
+            p = subprocess.run(["xclip", "-selection", "clipboard", "-i"],
+                               input="", text=True, timeout=15)
+            return p.returncode == 0
+        if backend == "xsel":
+            p = subprocess.run(["xsel", "-b", "-i"], input="", text=True,
+                               timeout=15)
+            return p.returncode == 0
+    except Exception:
+        return False
+    return False
+
+
+# ---------------------------------------------------------------------------
 # 开机自启
 # ---------------------------------------------------------------------------
 
