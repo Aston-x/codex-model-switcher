@@ -124,9 +124,11 @@ DEFAULT_PRESETS = {
             "name": "DeepSeek",
             "base_url": "https://api.deepseek.com/v1",
             "model": "deepseek-v4-pro",
-            # 现役：v4-pro(性能)/v4-flash(速度)。旧的 deepseek-chat / deepseek-reasoner
-            # 将于 2026/07/24 弃用，如仍需用可在编辑框手动添加。
-            "models": ["deepseek-v4-pro", "deepseek-v4-flash"],
+            # 现役：v4-pro(性能)/flash(速度)。
+            # ⚠️ 官方 Models & Pricing 页写明 legacy 名 deepseek-v4-flash 与
+            # deepseek-v4-flash-vision-exp "have been retired"（仍能调用，但会
+            # 被自动路由到 V4.1-Flash 并按 Flash 价计费）——不要再写进来。
+            "models": ["deepseek-v4-pro", "deepseek-flash"],
             "wire_api": "responses",
             "env_key": "DEEPSEEK_API_KEY",
             "storage_mode": "inline",
@@ -137,9 +139,22 @@ DEFAULT_PRESETS = {
             "name": "Kimi (Moonshot)",
             "base_url": "https://api.moonshot.cn/v1",
             "model": "kimi-k2.7-code",
-            "models": ["kimi-k2.7-code", "kimi-k2.7-code-highspeed", "kimi-k2.6", "kimi-k2.5", "moonshot-v1-128k"],
+            # ⚠️ moonshot-v1-* 与 kimi-k2.5 已于 2026-08-31 下线，别再写进来。
+            "models": ["kimi-k3", "kimi-k2.7-code", "kimi-k2.7-code-highspeed", "kimi-k2.6"],
             "wire_api": "responses",
             "env_key": "MOONSHOT_API_KEY",
+            "storage_mode": "inline",
+            "builtin": False,
+        },
+        {
+            "id": "mimo",
+            "name": "小米 MiMo",
+            "base_url": "https://api.xiaomimimo.com/v1",
+            "model": "mimo-v2.6-pro",
+            # mimo-v2.5 / mimo-v2.5-pro 已于北京时间 2026-10-21 10:00 正式下线。
+            "models": ["mimo-v2.6-pro", "mimo-v2.6-flash", "mimo-v2.6-pro-ultraspeed"],
+            "wire_api": "responses",
+            "env_key": "MIMO_API_KEY",
             "storage_mode": "inline",
             "builtin": False,
         },
@@ -147,8 +162,11 @@ DEFAULT_PRESETS = {
             "id": "glm",
             "name": "智谱 GLM",
             "base_url": "https://open.bigmodel.cn/api/paas/v4",
-            "model": "glm-4.6",
-            "models": ["glm-4.6", "glm-4.7", "glm-5", "glm-5.1", "glm-5.2"],
+            # 官方文档（docs.bigmodel.cn）当前能查到的在售模型是 GLM-5 / GLM-4.7 /
+            # GLM-4.7-Flash / GLM-4.6；GLM-5.1 / GLM-5.2 只在第三方聚合平台
+            # （SiliconFlow 的 zai-org/*）见过，bigmodel 官方没有确认，别写进来。
+            "model": "glm-4.7",
+            "models": ["glm-4.7", "glm-4.7-flash", "glm-5", "glm-4.6"],
             "wire_api": "responses",
             "env_key": "ZHIPUAI_API_KEY",
             "storage_mode": "inline",

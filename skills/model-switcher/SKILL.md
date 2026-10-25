@@ -1,6 +1,6 @@
 ---
 name: model-switcher
-description: "管理 Codex 的模型来源与运行参数：填 API key、一键接入 DeepSeek/MiniMax/Kimi/智谱GLM/硅基流动/百炼/OpenRouter、切换当前模型、修正 provider 错配、设置推理等级与上下文长度、探测厂商协议并实测连通性、自选哪些模型留在选择器里、清理已下架模型。当用户说『填一下 API key』『接上 Kimi/DeepSeek/GLM/MiniMax/OpenRouter』『换成 XX 模型』『现在用的什么模型』『有哪些模型可选』『推理等级调到 xhigh』『上下文调到 1M』『换个模型后报错』『这家能不能接』『把下架模型清掉』『只留这几个模型』时使用。"
+description: "管理 Codex 的模型来源与运行参数：填 API key、一键接入 DeepSeek/MiniMax/Kimi/智谱GLM/小米MiMo/硅基流动/百炼/OpenRouter、切换当前模型、修正 provider 错配、设置推理等级与上下文长度、探测厂商协议并实测连通性、自选哪些模型留在选择器里、清理已下架模型、接厂商前查官网下线公告。当用户说『填一下 API key』『接上 Kimi/DeepSeek/GLM/MiniMax/MiMo/OpenRouter』『换成 XX 模型』『现在用的什么模型』『有哪些模型可选』『推理等级调到 xhigh』『上下文调到 1M』『换个模型后报错』『这家能不能接』『把下架模型清掉』『只留这几个模型』『哪些模型下线了』时使用。"
 ---
 
 # Codex 模型切换器
@@ -30,22 +30,70 @@ description: "管理 Codex 的模型来源与运行参数：填 API key、一键
 | 「模型列表太乱了」「把下架的摘掉」 | `prune_stale_models(dry_run)` |
 | 「只留这几个模型」「其他的别显示」 | `sync_provider_models(provider_id, keep="a,b")` |
 | 「把这个模型藏起来 / 放回来」 | `set_model_visibility(slug, visible)` |
+| **「这个厂商哪些模型下线了」「接之前先查下架公告」** | **`check_provider_deprecations(provider_id)`** |
 
 ### `setup_preset` —— 最常用的一步到位
 
-preset 取值：**deepseek / minimax / kimi / glm / siliconflow / moonshot / dashscope / openrouter**
+preset 取值：**deepseek / minimax / kimi / glm / mimo / siliconflow / moonshot / dashscope / openrouter**
 
-它一次做完五件事：
+它一次做完六件事：
 1. `setx` 写用户级环境变量（供 CLI 使用）
 2. 写 `[model_providers.<id>]` 块，**默认 `storage_mode="inline"`**（key 内联进 config.toml）
 3. **拉厂商 `/v1/models` 拿真实在售列表**（预设里的模型名只是兜底，厂商上下架很频繁）
 4. 按真实在售列表登记到桌面版模型目录 `model_catalog_json`
    （不做这步，桌面版会把顶层 `model` 写回别的模型 → provider/model 组合非法 → 请求必挂），
    并把该 provider 下**已被厂商下架**的模型从选择器里隐藏
-5. 设为默认
+5. **先查官网下线公告**（见下节），已公告下线的模型不写进 provider 块、不登记进目录
+6. 设为默认
 
 **做完必须提醒用户：完全退出并重开 Codex 桌面版。**
 **然后建议再跑一次 `test_provider(provider_id, model)` 确认真能发请求。**
+
+## ⚠️ 加厂商前必查：官网下线公告（2026-10-22 新增规则）
+
+**用本 skill 接任何模型供应商之前，先去该厂商官网查「模型下线 / 弃用公告」，
+再决定要登记哪些模型。** 这条规则对 `setup_preset` 和 `add_provider` 都适用。
+
+为什么不能只拉 `/v1/models`：
+- `/v1/models` 只说明「现在还能调到」，说明不了「厂商已经宣布要下线」。
+- 官方公告一般给**两级时间点**：
+  - **系统替换时间**：老名字还能调，但请求被**自动路由**到新模型，**按新模型计费**；
+  - **正式下线时间**：老名字直接报错。
+- 两级都会让用户踩坑：前者是「以为在用旧模型、账单其实按新模型算」，
+  后者是「某天突然 unknown model」。
+
+`check_provider_deprecations(provider_id)` 就是干这件事的，判定顺序：
+1. 厂商 `/v1/models`（有 key 时）——「还能不能调」；
+2. 官网「模型列表」页的**在售章节** —— MiniMax / Kimi 的文档就分
+   「可用模型」和「历史模型」两节，**在售章节 = 真正的当前 lineup**；
+3. 官网「下线公告」页的**退役章节** —— 谁被点名退役；
+4. 公告正文里带日期的句子（「正式下线：【2026年11月18日】」这种最值钱）。
+
+已知的各家权威公告页：
+
+| 厂商 | 权威页面 |
+|---|---|
+| 小米 MiMo | `mimo.mi.com/static/docs/updates/deprecate.md`（下线公告）<br>`mimo.mi.com/static/docs/quick-start/summary/model.md`（在售清单）|
+| MiniMax | `platform.minimaxi.com/docs/faq/models.md`（分「可用模型 / 历史模型」）|
+| Kimi | `platform.kimi.com/docs/models.md`（分「多模态模型 / 已下线模型」）|
+| DeepSeek | `api-docs.deepseek.com/quick_start/pricing`（legacy 名标 retired）|
+| 智谱 GLM | `docs.bigmodel.cn/cn/guide/start/model-overview` |
+
+**查完要照着改三处**，只改一处等于没改：
+1. 桌面版模型目录 → `visibility = "hide"`（`sync_provider_models` 会自动做）
+2. provider 的模型列表 → 从 `presets.json` 里摘掉（`sync_provider_models` 会自动做）
+3. 插件里的 `PRESETS` / `DEFAULT_PRESETS` 默认值 → 改掉，
+   否则下次装插件 / 迁移预设时又把它们带回来
+
+实测踩过的例子（都写进规则里了）：
+- **MiniMax M2.5 / M2.7 系列**：2026-10-19 停止向新用户开放，**2026-11-18 正式下线**。
+  `/v1/models` 里还列着，但官网「可用模型」表里已经没有了 → 别留在选择器里。
+- **小米 MiMo `mimo-v2.5` / `mimo-v2.5-pro`**：2026-10-21 10:00 正式下线，
+  官网公告点名替换成 `mimo-v2.6-pro` / `mimo-v2.6-flash`。
+- **DeepSeek `deepseek-v4-flash` / `deepseek-v4-flash-vision-exp`**：
+  官网写明 "have been retired"，老名字仍能调用但会被路由到 V4.1-Flash
+  并按 Flash 价计费 → 真名是 `deepseek-flash`。
+- **Kimi `kimi-k2.5` / `moonshot-v1-*`**：2026-08-31 已下线。
 
 ## ⚠️ 换模型报错的根因（2026-10-21 实测定位）
 
@@ -112,6 +160,7 @@ explorer 登录后不再刷新，`setx` 写入的变量**传不进已在运行�
   |---|---|---|
   | DeepSeek | 存在 | ✅ 实测可用 |
   | MiniMax | 存在 | ✅ 实测可用 |
+  | 小米 MiMo | 存在 | ✅ 实测可用（官方也出了 Codex 接入指南）|
   | OpenRouter | 存在 | ✅（400+ 模型，聚合首选） |
   | 阿里百炼 DashScope | 存在 | ✅ |
   | 硅基流动 SiliconFlow | **404** | ❌ 只能走 Responses 兼容代理 |
@@ -125,7 +174,19 @@ explorer 登录后不再刷新，`setx` 写入的变量**传不进已在运行�
 - **模型名不要照抄预设**：各家会改名、也会下架。先 `discover_models(base_url, env_key=...)`
   拉 `/v1/models` 拿**真实** id 再写。
   （实测踩过：第三方预设写 `deepseek-v4-flash`，官方实际是 `deepseek-flash`；
-  Kimi 主力是 `kimi-k3` 而非 K2.7；`moonshot-v1-*` 系列 2026-08-31 下线。）
+  Kimi 主力是 `kimi-k3` 而非 K2.7；`moonshot-v1-*` 系列 2026-08-31 下线；
+  MiniMax M2.5/M2.7 系列 2026-11-18 下线；MiMo `mimo-v2.5*` 2026-10-21 下线。）
+- **厂商专属的模型目录字段不能照抄通用模板**：
+  小米 MiMo 的自定义工具（apply_patch）必须走 **freeform Responses lite 模式**，
+  否则报 `custom tools require MiMo freeform Responses lite mode`。
+  目录条目要带 `use_responses_lite = true` + `apply_patch_tool_type = "freeform"`；
+  反过来**不要**抄 `tool_mode = "code_mode_only"` —— 第三方模型会吐 DSML，工具调用全废。
+  MiMo 官方 `model-catalogs.json`：
+  `https://example-files.cnbj1.mi-fds.com/example-files/configs/model-catalogs.json`
+  （`mimo-v2.6-pro` / `mimo-v2.6-flash` / `mimo-v2.6-pro-ultraspeed`：
+  1M 上下文，档位 none/low/medium/high，默认 low）。
+  MiMo 的 `base_url` 是 `https://api.xiaomimimo.com/v1`（key 格式 `sk-`）；
+  Token Plan 走 `https://token-plan-cn.xiaomimimo.com/v1`（key 格式 `tp-`/`ttp-`）。
 - **key 放哪**：桌面版必须 `inline`（见坑 1）；CLI 两种都行。
   `inline` 的代价是 key 明文躺在 config.toml 里（可能被分享/提交 git），
   需要兼顾时可两种都写：inline 保证桌面版可用，env 供 CLI 使用。

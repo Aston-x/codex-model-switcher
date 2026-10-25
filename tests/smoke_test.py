@@ -250,6 +250,37 @@ def main():
     except Exception as e:
         bad("check_provider_protocol", repr(e))
 
+    # ---------- 10) 下线公告核查（防误报回归） ----------
+    section("10. 下线公告核查（关键：查不到≠已下线）")
+    try:
+        # 有公告页的厂商：要能抓到公告
+        r = server.check_provider_deprecations("minimax")
+        if "下线" in r or "在售" in r:
+            ok("check_provider_deprecations 跑通")
+        else:
+            bad("check_provider_deprecations 跑通", r[:200])
+        # 没配公告页的厂商：必须报「无法判定」，**不能**报「已下架」
+        r2 = server.check_provider_deprecations("dashscope")
+        if "已下架" in r2:
+            bad("没配公告页的厂商不误报已下架", r2[-400:])
+        elif "无法判定" in r2:
+            ok("没配公告页的厂商报「无法判定」而非「已下架」")
+        else:
+            bad("没配公告页的厂商报「无法判定」", r2[-400:])
+        # 回归：setup_preset 不能把这类厂商的模型剔光
+        p = server.PRESETS.get("dashscope") or {}
+        models = list(p.get("models") or [])
+        if models:
+            st, _live, _pg = server._scan_provider_deprecations(
+                "dashscope", p.get("base_url", ""), "", models)
+            dead = {m for m, (s, _) in st.items() if s in server.DEAD_STATES}
+            if dead:
+                bad("查不到在售清单时不应剔除任何模型", "误剔: %s" % sorted(dead))
+            else:
+                ok("查不到在售清单时不剔除任何模型（预设 %d 个全保留）" % len(models))
+    except Exception as e:
+        bad("下线公告核查", repr(e))
+
     return finish(tmp)
 
 

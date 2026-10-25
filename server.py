@@ -156,8 +156,19 @@ def add_provider(provider_id: str, name: str, base_url: str, models: str,
     ok, info = _call(switcher.do_save_provider, payload)
     if not ok:
         raise RuntimeError(info)
-    return "已保存 provider '%s'（模型：%s）。config.toml 备份：%s" % (
-        provider_id, ", ".join(model_list), info)
+    out = ["已保存 provider '%s'（模型：%s）。config.toml 备份：%s" % (
+        provider_id, ", ".join(model_list), info)]
+    # ⚠️ 规则（2026-10-22）：加厂商前先查官网下线公告。
+    # 自定义 provider 的公告页没法自动猜，所以只提示不阻断。
+    if provider_id in PRESETS:
+        try:
+            out.append(check_provider_deprecations(provider_id, ",".join(model_list)))
+        except Exception as e:
+            out.append("（查官网下线公告失败：%s）" % e)
+    else:
+        out.append("提示：自定义 provider 无法自动查公告页，"
+                   "请手动去官网「模型下线 / 更新公告」确认这几个模型名还在售。")
+    return "\n".join(out)
 
 
 def delete_provider(provider_id: str) -> str:
@@ -185,15 +196,25 @@ PRESETS = {
         "base_url": "https://api.deepseek.com/v1",
         "env_key": "DEEPSEEK_API_KEY",
         "models": ["deepseek-flash", "deepseek-v4-pro"],
+        # 官方 Models & Pricing 页会写明哪些模型已退役（legacy 名 retired）
+        "deprecation_docs": ["https://api-docs.deepseek.com/quick_start/pricing"],
+        "model_pattern": r"deepseek-[a-z0-9.\-]+",
         "needs_proxy": False,
     },
     "minimax": {
         "name": "MiniMax",
         "base_url": "https://api.minimaxi.com/v1",
         "env_key": "MINIMAX_API_KEY",
-        "models": ["MiniMax-M3.1-Flash", "MiniMax-M3", "MiniMax-M2.7",
-                   "MiniMax-M2.7-highspeed", "MiniMax-M2.5", "MiniMax-M2.5-highspeed",
-                   "MiniMax-M2.1", "MiniMax-M2.1-highspeed", "MiniMax-M2"],
+        # ⚠️ 只留官网「当前在售」的两个模型。
+        # M2 / M2.1 / M2.5 / M2.7 全系列已被官网标记「已下线」
+        # （2026-10-25 用 check_provider_deprecations 实测确认），
+        # 但 MiniMax 的 /v1/models **仍然返回这 9 个 id**——
+        # 「还能调到」不等于「还在售」，别再写进来。
+        "models": ["MiniMax-M3.1-Flash", "MiniMax-M3"],
+        # 官方"模型列表"页：分"可用模型"和"历史模型"两节，还带下线通知
+        "lineup_docs": ["https://platform.minimaxi.com/docs/faq/models.md"],
+        "deprecation_docs": ["https://platform.minimaxi.com/docs/faq/models.md"],
+        "model_pattern": r"MiniMax-[A-Za-z0-9.\-]+",
         "needs_proxy": False,
     },
     "kimi": {
@@ -203,6 +224,10 @@ PRESETS = {
         # kimi-k3 是 2026-07 发布的旗舰（1M 上下文，reasoning_effort: low/high/max）；
         # kimi-k2.5 已停止对新用户开放且将于 2026-08-31 下线，故不列入。
         "models": ["kimi-k3", "kimi-k2.7-code", "kimi-k2.7-code-highspeed", "kimi-k2.6"],
+        # 官方"模型列表"页：分"多模态模型"和"已下线模型"两节
+        "lineup_docs": ["https://platform.kimi.com/docs/models.md"],
+        "deprecation_docs": ["https://platform.kimi.com/docs/models.md"],
+        "model_pattern": r"(?:kimi|moonshot)-[a-z0-9.\-]+",
         "needs_proxy": True,
     },
     "glm": {
@@ -210,7 +235,48 @@ PRESETS = {
         "base_url": "https://open.bigmodel.cn/api/paas/v4",
         "env_key": "ZHIPUAI_API_KEY",
         "models": ["glm-4.7", "glm-4.7-flash", "glm-5", "glm-4.6"],
+        "deprecation_docs": ["https://docs.bigmodel.cn/cn/guide/start/model-overview"],
+        "lineup_docs": ["https://docs.bigmodel.cn/cn/guide/start/model-overview"],
+        "model_pattern": r"glm-[0-9][a-z0-9.\-]*",
         "needs_proxy": True,
+    },
+    "mimo": {
+        "name": "小米 MiMo",
+        "base_url": "https://api.xiaomimimo.com/v1",
+        "env_key": "MIMO_API_KEY",
+        # 官方 Codex 配置指南：https://mimo.mi.com/docs/zh-CN/tokenplan/integration/codex-configuration
+        # mimo-v2.5 / mimo-v2.5-pro 已于北京时间 2026-10-21 10:00 正式下线，不要再写进来。
+        "models": ["mimo-v2.6-pro", "mimo-v2.6-flash", "mimo-v2.6-pro-ultraspeed"],
+        # 语音模型在 /v1/models 里也在售，但不是对话模型，别登记进 Codex 模型目录
+        "catalog_exclude": ["mimo-v2.5-asr", "mimo-v2.5-tts",
+                            "mimo-v2.5-tts-voiceclone", "mimo-v2.5-tts-voicedesign"],
+        # 官方下线公告页 + 当前在售模型页
+        "deprecation_docs": ["https://mimo.mi.com/static/docs/updates/deprecate.md",
+                             "https://mimo.mi.com/static/docs/quick-start/summary/model.md"],
+        "lineup_docs": ["https://mimo.mi.com/static/docs/quick-start/summary/model.md"],
+        "model_pattern": r"mimo-v[0-9][A-Za-z0-9.\-]*",
+        # MiMo 的 /v1/models 不返回 ctx / 档位，官方目录里的值才是准的
+        # （https://example-files.cnbj1.mi-fds.com/example-files/configs/model-catalogs.json）
+        "model_defaults": {
+            "context_window": 1048576,
+            "max_output_tokens": 131072,
+            "effort_levels": "none,low,medium,high",
+            "default_effort": "low",
+            "extra_fields": {
+                # MiMo 的自定义工具（apply_patch）必须走 freeform Responses lite 模式，
+                # 否则报 "custom tools require MiMo freeform Responses lite mode"
+                "use_responses_lite": True,
+                "apply_patch_tool_type": "freeform",
+                "input_modalities": ["text", "image"],
+                "supports_parallel_tool_calls": False,
+                # 这几个是 OpenAI 专有字段，MiMo 不认，去掉免得多传参数
+                "service_tiers": None,
+                "additional_speed_tiers": None,
+                "supports_search_tool": None,
+                "web_search_tool_type": None,
+            },
+        },
+        "needs_proxy": False,
     },
     "siliconflow": {
         "name": "硅基流动 SiliconFlow",
@@ -221,29 +287,24 @@ PRESETS = {
                    "zai-org/GLM-5", "Qwen/Qwen3-Coder-480B-A35B-Instruct"],
         "needs_proxy": True,
     },
-    "moonshot": {
-        "name": "Moonshot 开放平台（旧系列）",
-        "base_url": "https://api.moonshot.cn/v1",
-        "env_key": "MOONSHOT_API_KEY",
-        # moonshot-v1 系列将于 2026-08-31 全平台下线，仅留作老用户兼容。
-        "models": ["moonshot-v1-128k", "moonshot-v1-32k", "moonshot-v1-8k"],
-        "needs_proxy": True,
-    },
     "dashscope": {
         "name": "阿里云百炼 DashScope",
         "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
         "env_key": "DASHSCOPE_API_KEY",
-        "models": ["qwen3-max", "qwen3-coder-plus", "deepseek-v3.2",
-                   "kimi-k2.5", "glm-4.7", "MiniMax-M2.5"],
+        # ⚠️ 不列 kimi-k2.5 / MiniMax-M2.5：这两家官方已把同名模型下线
+        #    （百炼是聚合平台，可能还有自己的版本，但同名模型极易踩坑）。
+        "models": ["qwen3-max", "qwen3-coder-plus", "deepseek-v3.2", "glm-4.7"],
         "needs_proxy": False,
     },
     "openrouter": {
         "name": "OpenRouter（聚合，400+ 模型）",
         "base_url": "https://openrouter.ai/api/v1",
         "env_key": "OPENROUTER_API_KEY",
-        # 模型名是 openrouter 的 "厂商/模型" 形式，必须按 /v1/models 的真实 id 填。
-        "models": ["minimax/minimax-m3.1-flash:free", "deepseek/deepseek-chat",
-                   "qwen/qwen3-coder", "z-ai/glm-4.7", "moonshotai/kimi-k2.5"],
+        # ⚠️ 模型名必须按 /v1/models 的**真实 id** 填（2026-10-25 实测 467 个）：
+        #    · "minimax/minimax-m3.1-flash:free" **不存在**（无 :free 变体）
+        #    · "moonshotai/kimi-k2.5" Moonshot 官方已下线，换成 kimi-k3
+        "models": ["minimax/minimax-m3.1-flash", "deepseek/deepseek-v4.1-flash",
+                   "qwen/qwen3.8-flash", "z-ai/glm-5.3-flash", "moonshotai/kimi-k3"],
         "needs_proxy": False,
     },
 }
@@ -321,11 +382,287 @@ def set_api_key(env_key_name: str, api_key: str,
     return "\n".join(lines)
 
 
+# ---------------------------------------------------------------------------
+# 下线/弃用公告核查（接任何厂商之前的必做步骤）
+# ---------------------------------------------------------------------------
+
+# 厂商公告里出现过的"下线/弃用"措辞（中英文都可能）
+_DEPRECATION_MARKERS = (
+    "下线", "弃用", "停止", "不再", "已退役", "retire", "retired",
+    "deprecat", "sunset", "offline", "end of life",
+)
+
+# 章节标题里出现这些词 -> 该章节列的是**已退役**的模型，不是在售清单
+_RETIRED_HEADING = re.compile(
+    r"(下线|已下线|历史|归档|停用|deprecat|retired)", re.I)
+
+# 下线核查的判定状态。
+# ⚠️ 只有 DEAD_STATES 里的状态才代表「确实下线了」，可以剔除。
+#    UNKNOWN_STATE 表示**查不到**（没配官网在售页 + /v1/models 取不到），
+#    查不到 ≠ 下线，绝不能据此剔除模型。
+DEAD_STATES = ("已下线", "已公告下线", "已下架")
+UNKNOWN_STATE = "无法判定"
+
+_BROWSER_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+               "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
+
+
+def _fetch_page_text(url, timeout=25):
+    """抓一个网页/文档，返回 (可见正文, 含脚本的全文)。
+
+    可见正文用来读公告；含脚本的全文用来做"在售清单"匹配 ——
+    有的文档站（Moonshot/Kimi、GLM）把模型名放在 JS 数据块里，
+    只看可见文字一个都匹配不上。
+    """
+    req = urllib.request.Request(url, headers={"User-Agent": _BROWSER_UA})
+    with _opener.open(req, timeout=timeout) as resp:
+        raw = resp.read()
+    text = None
+    for enc in ("utf-8", "gbk", "latin-1"):
+        try:
+            text = raw.decode(enc)
+            break
+        except UnicodeDecodeError:
+            continue
+    if text is None:
+        text = raw.decode("utf-8", "replace")
+    # HTML 标题 -> markdown 标题，这样 HTML 页和 .md 页都能按"章节"切
+    text = re.sub(r"<h([1-6])[^>]*>(.*?)</h\1>",
+                  lambda m: "\n\n" + "#" * int(m.group(1)) + " " + m.group(2) + "\n\n",
+                  text, flags=re.S | re.I)
+    full = re.sub(r"<[^>]+>", " ", text)
+    full = re.sub(r"[ \t]+", " ", full)
+    visible = re.sub(r"<script[^>]*>.*?</script>", " ", full, flags=re.S)
+    visible = re.sub(r"<style[^>]*>.*?</style>", " ", visible, flags=re.S)
+    return visible, full
+
+
+def _split_sections(text):
+    """按 markdown 标题切段，返回 [(标题, 正文)]；第一段前言标题为 ''。"""
+    sections, title, cur = [], "", []
+    for line in (text or "").split("\n"):
+        if re.match(r"^#{1,6}\s+", line):
+            sections.append((title, "\n".join(cur)))
+            title = line.lstrip("#").strip()
+            cur = []
+        else:
+            cur.append(line)
+    sections.append((title, "\n".join(cur)))
+    return sections
+
+
+def _model_ids(text, pattern):
+    return set(x.rstrip(".") for x in re.findall(pattern, text or ""))
+
+
+def _deprecation_sentences(visible):
+    """正文里带"下线/弃用"措辞的句子（公告的原文，报告里要引用）。"""
+    out = []
+    for sent in re.split(r"[。\n;；]", visible or ""):
+        s = re.sub(r"\s+", " ", sent).strip()
+        if 6 < len(s) < 400 and any(m in s.lower() for m in _DEPRECATION_MARKERS):
+            out.append(s)
+    return out
+
+
+def _dated_notices(notices):
+    """公告里带日期的句子——那才是"什么时候下线"的关键信息。"""
+    out = []
+    for s in notices:
+        if re.search(r"20\d{2}\s*[-年./]\s*\d{1,2}|20\d{2}\s*年", s):
+            out.append(s)
+    return out
+
+
+def _provider_model_candidates(provider_id, extra=""):
+    """该 provider 名下"用户可能用到"的模型名全集。"""
+    cands = []
+
+    def add(x):
+        x = (x or "").strip()
+        if x and x not in cands:
+            cands.append(x)
+
+    for m in re.split(r"[\r\n,]+", extra or ""):
+        add(m)
+    p = PRESETS.get(provider_id) or {}
+    for m in p.get("models") or []:
+        add(m)
+    for pr in _presets_providers():
+        if pr.get("id") == provider_id:
+            for m in pr.get("models") or []:
+                add(m)
+    return cands
+
+
+def _scan_provider_deprecations(provider_id, base_url, key, candidates):
+    """核心扫描。返回 (状态字典, 在售列表, 页面信息)。"""
+    p = PRESETS.get(provider_id) or {}
+    excluded = set(p.get("catalog_exclude") or [])
+    pattern = p.get("model_pattern") or r"[A-Za-z][A-Za-z0-9.\-]{2,40}"
+
+    live_ids = []
+    if base_url and key:
+        try:
+            live = _live_models(base_url, key)
+            live_ids = [it.get("id") for it in live
+                        if isinstance(it, dict) and it.get("id")]
+        except Exception:
+            live_ids = []
+
+    lineup_ids, retired_ids = set(), set()
+    lineup_urls, dep_urls, notices = [], [], []
+
+    # 1) 官网"在售模型列表"页：它通常分成"在售章节"和"已下线/历史章节"
+    for u in (p.get("lineup_docs") or []):
+        try:
+            visible, full = _fetch_page_text(u)
+        except Exception:
+            continue
+        lineup_urls.append(u)
+        notices.extend(_deprecation_sentences(visible))
+        for title, body in _split_sections(full):
+            ids = _model_ids(body, pattern)
+            if not title:
+                continue          # 前言（可能是下线通知），不当成在售清单
+            if _RETIRED_HEADING.search(title):
+                retired_ids |= ids
+            else:
+                lineup_ids |= ids
+
+    # 2) 官网下线公告页：只有"退役章节"里的模型才算被公告点名
+    for u in (p.get("deprecation_docs") or []):
+        try:
+            visible, full = _fetch_page_text(u)
+        except Exception:
+            continue
+        dep_urls.append(u)
+        notices.extend(_deprecation_sentences(visible))
+        for title, body in _split_sections(full):
+            if not title or _RETIRED_HEADING.search(title):
+                retired_ids |= _model_ids(body, pattern)
+
+    # 在售清单 = 官网在售章节 ∩ /v1/models；没配在售页就以 /v1/models 为准
+    if lineup_ids and live_ids:
+        current = lineup_ids & set(live_ids)
+    else:
+        current = lineup_ids or set(live_ids)
+
+    out = {}
+    dated = _dated_notices(notices)
+    for m in candidates:
+        if m in excluded:
+            continue  # 语音/非对话模型，不参与 Codex 侧判定
+        if m in current:
+            out[m] = ("在售", "")
+        elif m in retired_ids:
+            out[m] = ("已下线", _retire_reason(m, notices, dated))
+        elif live_ids and m in live_ids:
+            out[m] = ("已公告下线", "还能调用，但厂商已把它移出在售清单：" +
+                      _retire_reason(m, notices, dated))
+        elif any(m.lower() in s.lower() for s in notices):
+            out[m] = ("已公告下线", "官网公告里点名了它：" + _retire_reason(m, notices, dated))
+        elif current:
+            # 我们确实拿到了权威在售清单，而它不在里面 -> 可判定为已下架
+            out[m] = ("已下架", "厂商在售清单里已没有它")
+        else:
+            # ⚠️ **没有任何权威来源**（/v1/models 取不到、官网没配在售页、公告也没点名）
+            #    绝不能判定成「已下架」—— 否则会把好模型全误杀
+            #    （2026-10-25 实测：dashscope / openrouter / moonshot 没配公告页，
+            #      旧逻辑把它们的**全部**模型都误报成已下线，
+            #      setup_preset 直接把 preset 模型剔光后抛错，厂商根本接不上）
+            out[m] = ("无法判定", "没拿到厂商在售清单（/v1/models 取不到且未配官网在售页），"
+                                "公告也没点名它 —— 请人工确认，不能当成已下线")
+    return out, live_ids, {"lineup": lineup_urls, "dep": dep_urls,
+                            "notices": notices, "retired": sorted(retired_ids)}
+
+
+def _pick_notice(model_id, notices):
+    """挑一句最能说明该模型下线的公告原文。"""
+    pat = re.compile(r"(?<![\w.\-])" + re.escape(model_id.lower()) + r"(?![\w.\-])")
+    for s in notices:
+        if pat.search(s.lower()):
+            return s
+    return notices[0] if notices else ""
+
+
+def _retire_reason(model_id, notices, dated):
+    """退役原因 = 点名这个模型的公告原文；没有就带上最相关的一句日期公告。"""
+    hit = _pick_notice(model_id, notices)
+    if not hit and dated:
+        hit = dated[0]
+    if not hit and notices:
+        hit = notices[0]
+    return hit
+
+
+def check_provider_deprecations(provider_id: str, models: str = "") -> str:
+    """对照厂商**官网公告**查哪些模型已经被弃用/下架。
+
+    为什么不能只看 /v1/models：
+      /v1/models 只反映"现在还能不能调到"，反映不了"厂商已经宣布要下线"。
+      官方公告一般给两个时间点：
+        - 系统替换时间：老名字还会被自动路由到新模型，**按新模型计费**
+        - 正式下线时间：老名字直接报错
+      两条路都会让用户踩坑，所以接厂商前先查一遍。
+
+    参数：
+      provider_id  预设 id（deepseek/minimax/kimi/glm/mimo/...）或已配置的 provider id
+      models       可选，逗号/换行分隔的模型名；留空则用
+                   预设列表 ∪ presets.json 里该 provider 的列表 ∪ 厂商在售列表
+    """
+    provider_id = (provider_id or "").strip()
+    if not provider_id:
+        raise RuntimeError("provider_id 不能为空")
+    p = PRESETS.get(provider_id) or {}
+    base = p.get("base_url") or ""
+    key = ""
+    try:
+        base2, key, _wire, _env = _provider_creds(provider_id)
+        base = base or base2
+    except Exception:
+        pass
+    cands = _provider_model_candidates(provider_id, models)
+    status, live_ids, pages = _scan_provider_deprecations(
+        provider_id, base, key, cands)
+    if not status:
+        return ("provider '%s' 没有可比对的模型名。"
+                "（厂商在售 %d 个：%s）" % (provider_id, len(live_ids), ", ".join(live_ids[:20])))
+    dead = [m for m, (st, _) in status.items() if st in DEAD_STATES]
+    unknown = [m for m, (st, _) in status.items() if st == UNKNOWN_STATE]
+    lines = ["provider '%s' 下线/弃用核查" % provider_id]
+    lines.append("  厂商在售列表（/v1/models%s）：%s"
+                 % ("，已取到" if live_ids else "，没 key 只能靠官网", 
+                    ", ".join(live_ids[:20]) if live_ids else "(未取到)"))
+    seen_urls = []
+    for u in pages["lineup"] + pages["dep"]:
+        if u not in seen_urls:
+            seen_urls.append(u)
+    lines.append("  查过的官网页：%s"
+                 % (", ".join(seen_urls) or
+                    "(该厂商没配公告页，只能人工去官网翻)"))
+    retired = [m for m in pages["retired"] if m not in status]
+    if retired:
+        lines.append("  官网公告点名已退役的模型（全部）：%s" % ", ".join(retired))
+    for m in sorted(status):
+        st, why = status[m]
+        lines.append("  - %-28s %s%s" % (m, st, ("  —— " + why) if why else ""))
+    if dead:
+        lines.append("建议从模型列表里去掉：%s" % ", ".join(sorted(dead)))
+    else:
+        lines.append("结论：名单里没有已弃用的模型。")
+    if unknown:
+        lines.append("⚠️ 无法判定（**不是**已下线）：%s" % ", ".join(sorted(unknown)))
+        lines.append("   这些厂商没配官网在售页、/v1/models 也取不到，"
+                     "查不到不等于下线 —— 请人工去官网确认后再决定。")
+    return "\n".join(lines)
+
+
 def setup_preset(preset: str, api_key: str, model: str = "", make_default: bool = True,
                  storage_mode: str = "inline") -> str:
     """一键接入某个模型提供方：写 API key -> 建 provider -> 设为默认 -> 登记到桌面版模型目录。
 
-    preset 取值：deepseek / minimax / kimi / glm / siliconflow / moonshot / dashscope / openrouter
+    preset 取值：deepseek / minimax / kimi / glm / mimo / siliconflow / moonshot / dashscope / openrouter
     api_key  是该家的 API key。
     model    可选，默认用该 preset 的首个模型；也可以先调 discover_models 拿真实列表再选。
     make_default=True 会同时把它切成 Codex 的默认模型。
@@ -336,6 +673,11 @@ def setup_preset(preset: str, api_key: str, model: str = "", make_default: bool 
     接入时会自动拉该厂商 /v1/models 的**真实在售列表**来登记模型目录
     （预设里的模型名只是兜底，厂商上下架很频繁）；
     并把该 provider 下已被厂商下架的模型从模型选择器里隐藏。
+
+    ⚠️ 接入前/接入时会**先查厂商官网的下线公告**（check_provider_deprecations）：
+    /v1/models 只反映"现在还能调到"，公告才反映"厂商已经宣布要下线"——
+    两级时间点（系统替换时间 / 正式下线时间）都会让用户踩坑。
+    已下线的模型名不会被写进 provider 块，也不会被登记进模型目录。
 
     这一步做完，Codex 桌面版就能用这个模型了（需完全退出重开一次）。
     """
@@ -359,6 +701,39 @@ def setup_preset(preset: str, api_key: str, model: str = "", make_default: bool 
             lines.append("（写用户级环境变量失败，仅写入 config.toml：%s）" % msg)
 
     models = [m.strip() for m in re.split(r"[\r\n,]+", model) if m.strip()] or list(p["models"])
+
+    # ⚠️ 规则（2026-10-22 新增）：接厂商前先查**官网**的下线公告。
+    # /v1/models 只说明"现在还能调到"，公告才说明"厂商已经宣布要下线"。
+    # 已下线的模型名一旦写进 provider 块，桌面版模型选择器里就会多出一个
+    # 点了必挂的选项（unknown model）。
+    excluded = set(p.get("catalog_exclude") or [])
+    dead = set()
+    try:
+        _status, _live0, _pages = _scan_provider_deprecations(
+            key, p["base_url"], api_key.strip(), models)
+        dead = {m for m, (st, _why) in _status.items() if st in DEAD_STATES}
+        _unknown = {m for m, (st, _why) in _status.items() if st == UNKNOWN_STATE}
+        _seen = []
+        for _u in _pages["lineup"] + _pages["dep"]:
+            if _u not in _seen:
+                _seen.append(_u)
+        lines.append("官网下线公告核查（%s）：%s"
+                     % (", ".join(_seen) if _seen else "该厂商未配公告页",
+                        ("发现已弃用 -> " + ", ".join(sorted(dead))) if dead
+                        else "未发现已弃用模型"))
+        if _unknown:
+            lines.append("（%d 个模型**无法判定**（查不到在售清单≠已下线），保留不动：%s）"
+                         % (len(_unknown), ", ".join(sorted(_unknown))))
+    except Exception as e:
+        lines.append("（查官网下线公告失败：%s）" % e)
+    dropped = [m for m in models if m in dead or m in excluded]
+    if dropped:
+        models = [m for m in models if m not in dead and m not in excluded]
+        lines.append("已剔除（已下线 / 不适合 Codex）：%s" % ", ".join(dropped))
+    if not models:
+        raise RuntimeError("预设里的模型全被判定为已下线或不适合 Codex，"
+                           "请先查官网公告再挑模型。")
+
     payload = {
         "id": key,
         "name": p["name"],
@@ -394,7 +769,8 @@ def setup_preset(preset: str, api_key: str, model: str = "", make_default: bool 
     if live:
         live_ids = [it.get("id") for it in live
                     if isinstance(it, dict) and it.get("id")]
-        merged = list(dict.fromkeys(models + live_ids))
+        merged = [m for m in dict.fromkeys(models + live_ids)
+                  if m not in excluded and m not in dead]
         lines.append("厂商在售 %d 个模型：%s"
                      % (len(live_ids), ", ".join(live_ids[:12])
                         + (" ..." if len(live_ids) > 12 else "")))
@@ -407,22 +783,28 @@ def setup_preset(preset: str, api_key: str, model: str = "", make_default: bool 
 
     try:
         cat_path = _catalog_path()
+        md = p.get("model_defaults") or {}
+        extra = md.get("extra_fields") or {}
+        registered = 0
         for it in (live or [{"id": m} for m in models]):
             if not isinstance(it, dict):
                 continue
             s = it.get("id")
-            if not s:
+            if not s or s in excluded or s in dead:
                 continue
             eff = it.get("effort") or {}
-            levels = eff.get("supported_levels") or eff.get("supportedLevels") or []
+            levels = (eff.get("supported_levels") or eff.get("supportedLevels")
+                      or [x for x in (md.get("effort_levels") or "").split(",") if x])
             register_model_in_catalog(
                 s, it.get("name") or s,
-                context_window=int(it.get("context_window") or 0),
-                max_output_tokens=int(it.get("max_output_tokens") or 0),
+                context_window=int(it.get("context_window") or md.get("context_window") or 0),
+                max_output_tokens=int(it.get("max_output_tokens") or md.get("max_output_tokens") or 0),
                 effort_levels=",".join(levels),
-                default_effort=eff.get("default_level") or "",
-                catalog_path=cat_path)
-        lines.append("已登记到桌面版模型目录：%s（%d 个模型）" % (cat_path, len(models)))
+                default_effort=eff.get("default_level") or md.get("default_effort") or "",
+                catalog_path=cat_path,
+                extra_fields=extra)
+            registered += 1
+        lines.append("已登记到桌面版模型目录：%s（%d 个模型）" % (cat_path, registered))
         # 顺带把该 provider 下已被厂商下架的模型从列表里隐藏掉
         try:
             lines.append(sync_provider_models(key, hide_unlisted=True,
@@ -646,7 +1028,8 @@ def register_model_in_catalog(slug: str, display_name: str = "",
                               max_output_tokens: int = 0,
                               effort_levels: str = "",
                               default_effort: str = "",
-                              catalog_path: str = "") -> str:
+                              catalog_path: str = "",
+                              extra_fields: dict = None) -> str:
     """把一个模型登记进桌面版模型目录（model_catalog_json），让桌面版能选到它。
 
     必须登记的原因：桌面版会把 UI 里选中的模型写回 config.toml 顶层 model。
@@ -661,6 +1044,12 @@ def register_model_in_catalog(slug: str, display_name: str = "",
 
     参数留空（0 / ""）时**沿用目录里已有条目的值**（若已登记过），
     否则用保守默认值。
+
+    extra_fields：厂商特有的目录字段，登记时直接覆盖/补充到条目上。
+      值为 None 的键会**删除**对应字段（用来去掉 OpenAI 专有字段）。
+      例：小米 MiMo 需要 use_responses_lite=True，
+          否则自定义工具（apply_patch）报
+          "custom tools require MiMo freeform Responses lite mode"。
 
     模板取自目录里**没有 tool_mode 键**的条目（内置模型里只有 gpt-5.5 是这样）：
     带 tool_mode="code_mode_only" 的条目会逼模型用 code mode 输出，
@@ -737,6 +1126,14 @@ def register_model_in_catalog(slug: str, display_name: str = "",
     entry.pop("tool_mode", None)          # 普通 function calling 模式
     entry.pop("multi_agent_version", None)
 
+    # 厂商特有字段（use_responses_lite / apply_patch_tool_type 等）
+    if extra_fields:
+        for k, v in extra_fields.items():
+            if v is None:
+                entry.pop(k, None)
+            else:
+                entry[k] = v
+
     replaced = False
     for i, m in enumerate(models):
         if m.get("slug") == slug:
@@ -745,8 +1142,16 @@ def register_model_in_catalog(slug: str, display_name: str = "",
             break
     if not replaced:
         models.append(entry)
-    cat["models"] = models
-    _save_catalog(path, cat)
+    # register_model_in_catalog 期间它自己 load/save 过目录，
+    # 这里必须**重新读**再合并 —— 否则会用旧快照覆盖掉刚登记的条目。
+    fresh = _load_catalog(path)
+    by_slug = {m.get("slug"): m for m in (fresh.get("models") or [])
+               if isinstance(m, dict) and m.get("slug")}
+    for m in models:
+        if isinstance(m, dict) and m.get("slug"):
+            by_slug[m["slug"]] = m
+    fresh["models"] = list(by_slug.values())
+    _save_catalog(path, fresh)
 
     return ("已%s模型 '%s' 到 %s\n"
             "下一步：codex exec 新开会话，或重启 Codex 桌面版，模型选择器里就能看到它。"
@@ -900,6 +1305,23 @@ def sync_provider_models(provider_id: str, keep: str = "",
         if pr.get("id") == provider_id:
             known |= set(pr.get("models") or [])
 
+    # 官网下线公告核查：厂商「还能调到」不等于「还在售」。
+    # 已被公告点名的模型同样要下架（MiniMax M2.5/M2.7 就是这种：
+    # 2026-11-18 正式下线，现在 /v1/models 还能列出来）。
+    retired = set()
+    current_models = None
+    try:
+        status, _live, _pages = _scan_provider_deprecations(
+            provider_id, base, key, sorted(known))
+        # ⚠️ 只有**确定**下线（DEAD_STATES）才算 retired。
+        #    UNKNOWN_STATE 是「查不到在售清单」，查不到 ≠ 下线，
+        #    把它算进 retired 会把好模型从选择器里误隐藏。
+        retired = set(m for m, (st, _w) in status.items() if st in DEAD_STATES)
+        current_models = [m for m in known
+                          if status.get(m, ("在售", ""))[0] == "在售"]
+    except Exception:
+        retired = set()
+
     path = _catalog_path()
     cat = _load_catalog(path)
     models = cat.get("models") or []
@@ -910,6 +1332,13 @@ def sync_provider_models(provider_id: str, keep: str = "",
             continue
         s = m.get("slug")
         if s not in known:
+            continue
+        if s in retired:
+            # 官网已公告下线
+            if (m.get("visibility") or "list") != "hide":
+                m["visibility"] = "hide"
+                hidden.append(s)
+            delisted.append(s)
             continue
         if s not in live_ids:
             # 厂商已下架
@@ -928,11 +1357,12 @@ def sync_provider_models(provider_id: str, keep: str = "",
 
     # 在售但没登记的 -> 登记
     if register_missing:
+        excluded = set((PRESETS.get(provider_id) or {}).get("catalog_exclude") or [])
         for it in live:
             if not isinstance(it, dict):
                 continue
             s = it.get("id")
-            if not s or _catalog_entry(cat, s):
+            if not s or s in excluded or _catalog_entry(cat, s):
                 continue
             eff = it.get("effort") or {}
             levels = eff.get("supported_levels") or eff.get("supportedLevels") or []
@@ -952,6 +1382,24 @@ def sync_provider_models(provider_id: str, keep: str = "",
     cat["models"] = models
     _save_catalog(path, cat)
 
+    # provider 的模型列表也同步：把已下线的名字摘掉
+    dropped = []
+    if current_models:
+        providers = _presets_providers()      # 读一次，改完再存
+        for pr in providers:
+            if pr.get("id") != provider_id:
+                continue
+            old = list(pr.get("models") or [])
+            new = [m for m in old if m in current_models]
+            if len(new) != len(old):
+                dropped = [m for m in old if m not in new]
+                pr["models"] = new
+                if pr.get("model") not in new:
+                    pr["model"] = new[0] if new else pr.get("model")
+        if dropped:
+            switcher.save_presets({"version": switcher.PRESETS_VERSION,
+                                   "providers": providers})
+
     lines = ["provider '%s' 对齐完成（base=%s，厂商在售 %d 个）" % (provider_id, base, len(live_ids))]
     if keep_set:
         lines.append("  指定保留：%s" % ", ".join(sorted(keep_set)))
@@ -960,10 +1408,13 @@ def sync_provider_models(provider_id: str, keep: str = "",
     if hidden:
         lines.append("  已从列表隐藏：%s" % ", ".join(hidden))
     if delisted:
-        lines.append("  厂商已下架（条目保留，visibility=hide）：%s" % ", ".join(delisted))
+        lines.append("  厂商已下架/已公告下线（条目保留，visibility=hide）：%s"
+                     % ", ".join(sorted(set(delisted))))
+    if dropped:
+        lines.append("  已从 provider 模型列表里摘掉：%s" % ", ".join(dropped))
     if added:
         lines.append("  新登记：%s" % ", ".join(added))
-    if not (shown or hidden or added):
+    if not (shown or hidden or added or dropped):
         lines.append("  目录已是最新，无需改动。")
     lines.append("目录：%s\n重启 Codex 桌面版后生效。" % path)
     return "\n".join(lines)
@@ -1608,6 +2059,7 @@ def main():
     mcp.tool()(test_provider)
     mcp.tool()(set_api_key)
     mcp.tool()(setup_preset)
+    mcp.tool()(check_provider_deprecations)
     mcp.tool()(fix_provider_alignment)
     mcp.tool()(list_model_capabilities)
     mcp.tool()(set_reasoning_effort)
