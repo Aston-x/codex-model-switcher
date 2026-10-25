@@ -1,26 +1,26 @@
 # codex-model-switcher
 
-**Codex 模型切换器** —— 纯插件形态（MCP + Skill）的模型来源与运行参数管理工具。
+在 Codex 里直接接 API key、切模型、调推理等级与上下文长度。
 
-不注入桌面版、不起代理、不改客户端二进制。
+纯插件形态（MCP + Skill），不注入桌面版、不起代理、不改客户端二进制。
 
-在 Codex 对话里直接说「用 deepseek，key 是 sk-xxx」「换成 XX 模型」
-「推理等级调到 max」「这家能不能接」「哪些模型下线了」「把下架模型清掉」就能完成。
+```
+用 deepseek，key 是 sk-xxx
+推理等级调到 max
+这家厂商能不能接？
+哪些模型下线了？
+```
 
----
+## 它修的四个坑
 
-## 为什么需要它
+| 现象 | 根因 |
+|---|---|
+| `unknown model 'xxx'`（2013） | 桌面版换模型**只写模型名、不写 provider** |
+| `Missing environment variable: XXX` | 桌面版是 MSIX 应用，读不到 `setx` 写的环境变量 |
+| 换厂商就报协议错 | Codex 0.163 起只认 `wire_api = "responses"` |
+| 模型列表里有点不动的 | 目录里留着厂商已下架的模型 |
 
-Codex 桌面版的模型管理有**四个结构性的坑**，都不是"配置写错"能解释的：
-
-| # | 现象 | 根因 |
-|---|---|---|
-| 1 | `unknown model 'xxx'`（code 2013） | 桌面版模型选择器**只写模型名、不写 provider**。全局状态里模型配置只有 `{model, reasoningEffort, serviceTier}`，**结构上就没有 provider 字段** |
-| 2 | `Missing environment variable: XXX` | 桌面版是 **MSIX 应用**，继承 explorer.exe 的环境快照，`setx` 写进去传不进已运行的进程 |
-| 3 | 换了厂商就报协议错 | Codex 0.163 起只认 `wire_api = "responses"`（旧的 `"chat"` 已被移除），厂商必须有 `POST {base}/responses` |
-| 4 | 模型列表里有一堆点不动 | 桌面版选择器读**本地目录**，厂商下架了模型但目录还留着 |
-
-这四件事本插件都有对应的工具，而且**都做过实测**，不是照抄文档猜的。
+四件事都有对应工具，且都做过实测。
 
 ## 快速开始
 

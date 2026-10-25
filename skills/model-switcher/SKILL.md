@@ -1,6 +1,6 @@
 ---
 name: model-switcher
-description: "管理 Codex 的模型来源与运行参数：填 API key、一键接入 DeepSeek/MiniMax/Kimi/智谱GLM/小米MiMo/硅基流动/百炼/OpenRouter、切换当前模型、修正 provider 错配、设置推理等级与上下文长度、探测厂商协议并实测连通性、自选哪些模型留在选择器里、清理已下架模型、接厂商前查官网下线公告。当用户说『填一下 API key』『接上 Kimi/DeepSeek/GLM/MiniMax/MiMo/OpenRouter』『换成 XX 模型』『现在用的什么模型』『有哪些模型可选』『推理等级调到 xhigh』『上下文调到 1M』『换个模型后报错』『这家能不能接』『把下架模型清掉』『只留这几个模型』『哪些模型下线了』时使用。"
+description: "在 Codex 里接 API key、切模型、修 provider 错配、查厂商下线公告、调推理等级与上下文长度、自选哪些模型留在选择器里。当用户说『接上 DeepSeek/Kimi/GLM/MiMo/OpenRouter』『换成 XX 模型』『推理等级调到 max』『上下文调到 1M』『换个模型后报错』『哪些模型下线了』『把下架模型清掉』时使用。"
 ---
 
 # Codex 模型切换器

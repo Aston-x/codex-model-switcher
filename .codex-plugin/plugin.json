@@ -2,7 +2,7 @@
   "name": "model-switcher",
   "version": "1.3.0",
   "mcpServers": "./.mcp.json",
-  "description": "在 Codex 内管理模型来源与运行参数：接 API key、一键接入 DeepSeek/MiniMax/Kimi/智谱GLM/小米MiMo/硅基流动/百炼/OpenRouter、切换模型、修正 provider 错配、查厂商下线公告、按模型真实档位设置推理等级与上下文长度、自选哪些模型留在选择器里。",
+  "description": "在 Codex 里接 API key、切模型、修 provider 错配、查厂商下线公告、调推理等级与上下文长度。",
   "author": {
     "name": "jiyii (Aston-x)"
   },
