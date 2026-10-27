@@ -246,6 +246,37 @@ def _set_root_string_key(cfg_path, key, value):
     return True, "已写入 %s = %s" % (key, line)
 
 
+def check_codex_paths(rep, fix=None):
+    """config.toml 里 Codex 自己写的那段路径，升级后可能失效。
+
+    Codex 桌面版升级会换掉 %LOCALAPPDATA%\\OpenAI\\Codex\\bin\\<hash>\\
+    里的目录名，但**不一定同步刷新** config.toml 里 [shell_environment_policy]
+    那段的 CODEX_CLI_PATH / NODE_REPL_* —— 那些值会指向已删除的旧目录，
+    依赖它们的功能（起 codex CLI、browser 插件）会静默失效。
+    """
+    cfg_path = os.path.join(pc.codex_home(), "config.toml")
+    raw = read_text(cfg_path)
+    if raw is None:
+        return
+    stale = []
+    for m in re.finditer(r"^\s*([A-Z_][A-Z0-9_]*)\s*=\s*'([^']*[\\/][^']*)'",
+                         raw, re.M):
+        key, val = m.group(1), m.group(2)
+        if not re.match(r"^[A-Za-z]:\\", val):
+            continue
+        if not os.path.exists(val):
+            stale.append((key, val))
+    if not stale:
+        rep.ok("config.toml 里的绝对路径", "全部有效")
+        return
+    for key, val in stale:
+        rep.warn("%s 指向的路径已不存在" % key,
+                 "%s\n  原因多半是 Codex 升级换了 bin\\<hash> 目录名，"
+                 "但没刷新 config.toml 里的这段。" % val,
+                 "完全退出并重开 Codex 桌面版（让它自己重写），"
+                 "或把值改成当前实际路径")
+
+
 def check_config(rep, fix):
     """config.toml 的存在性、可解析性、关键键。"""
     home = pc.codex_home()
@@ -518,6 +549,7 @@ def run_doctor(fix=False, want_json=False, do_autostart=True):
     check_mcp(rep, fix)
     check_mcp_json(rep, fix)
     check_clipboard(rep)
+    check_codex_paths(rep, fix)
     check_config(rep, fix)
     check_install(rep, fix)
     if do_autostart:
