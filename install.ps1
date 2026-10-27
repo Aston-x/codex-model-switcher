@@ -1,4 +1,4 @@
-# 一键安装（Windows PowerShell）
+﻿# 一键安装（Windows PowerShell）
 #
 #   powershell -ExecutionPolicy Bypass -File .\install.ps1
 #
@@ -32,11 +32,15 @@ if (-not $Py) {
 }
 Write-Host "    Python：$($Py -join ' ')"
 
-# 2) 依赖
+# 2) 依赖 mcp（装不上不中断，doctor 会再报）
 & $Py[0] @($Py[1..($Py.Length-1)]) -c "import mcp" 2>$null
 if ($LASTEXITCODE -ne 0) {
     Write-Host "==> 安装 mcp 依赖" -ForegroundColor Cyan
     & $Py[0] @($Py[1..($Py.Length-1)]) -m pip install --quiet mcp
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "!! pip 装不上 mcp。请手动执行：" -ForegroundColor Yellow
+        Write-Host "   $($Py[0]) -m pip install mcp"
+    }
 }
 
 # 3) 注册 marketplace + 安装插件
@@ -51,12 +55,16 @@ if (-not $codexExe) {
 if ($codexExe) {
     Write-Host "==> 注册 marketplace" -ForegroundColor Cyan
     & $codexExe plugin marketplace add $Repo
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "!! 注册失败。若提示网络/代理错误，说明这台机器的 git 代理配了但代理没在跑。" -ForegroundColor Yellow
+        Write-Host "   排查：git config --global --get http.proxy"
+    }
     Write-Host "==> 安装插件" -ForegroundColor Cyan
     & $codexExe plugin add model-switcher@codex-model-switcher
 } else {
     Write-Host "!! 找不到 codex 命令，请手动执行：" -ForegroundColor Yellow
-    Write-Host "     codex plugin marketplace add `"$Repo`""
-    Write-Host "     codex plugin add model-switcher@codex-model-switcher"
+    Write-Host "   codex plugin marketplace add `"$Repo`""
+    Write-Host "   codex plugin add model-switcher@codex-model-switcher"
 }
 
 # 4) 体检 + 自动修
@@ -67,5 +75,6 @@ Write-Host ""
 Write-Host "安装完成。" -ForegroundColor Green
 Write-Host "下一步："
 Write-Host "  1. 完全退出并重开 Codex 桌面版"
-Write-Host "  2. 在对话里说「用 deepseek，key 是 sk-xxx」即可接入"
+Write-Host "  2. 接入密钥**别贴在对话里**：在厂商控制台复制 key，然后对 agent 说"
+Write-Host "     「从剪贴板更新 DEEPSEEK_API_KEY」——插件会从剪贴板读走并立刻清空"
 Write-Host "  3. 接入后建议再跑一次 doctor.py 确认"

@@ -35,13 +35,28 @@ Pure plugin (MCP + Skill). No injection, no proxy, no patching of the client bin
 ```bash
 git clone https://github.com/Aston-x/codex-model-switcher.git
 cd codex-model-switcher
-./install.sh                 # macOS / Linux
+bash install.sh            # 用 bash 调，不需要可执行位
 ```
 
 ```powershell
 git clone https://github.com/Aston-x/codex-model-switcher.git
 cd codex-model-switcher
-powershell -ExecutionPolicy Bypass -File .\install.ps1   # Windows
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+```
+
+没有 git 也能装 —— 直接下载 zip 解压即可：
+
+```bash
+# https://github.com/Aston-x/codex-model-switcher/archive/refs/heads/main.zip
+unzip codex-model-switcher-main.zip && cd codex-model-switcher-main && bash install.sh
+```
+
+**直连 GitHub 不通时走镜像**（国内常见，代理开没开都能拉）：
+
+```bash
+git clone https://ghproxy.net/https://github.com/Aston-x/codex-model-switcher.git
+# 或
+git clone https://gh-proxy.com/https://github.com/Aston-x/codex-model-switcher.git
 ```
 
 安装脚本：检查 Python 3.11+ → 装 `mcp` → 注册 marketplace 并安装插件 → 跑 `doctor.py --fix`。
@@ -58,6 +73,24 @@ source = '<仓库目录>'
 
 [plugins."model-switcher@codex-model-switcher"]
 enabled = true
+```
+
+### 拉不到 / 跑不起来
+
+| 症状 | 原因与解法 |
+|---|---|
+| `Failed to connect to github.com:443 over proxy 127.0.0.1` | 这台机器的 git 配了本地代理但**代理没在跑**。先起代理；或临时绕过：`git -c http.proxy= -c https.proxy= clone ...` |
+| `Recv failure: Connection was reset` | 直连 GitHub 被重置。**走镜像**（见上面的 clone 命令），或用 zip 下载 |
+| `Permission denied: ./install.sh` | 仓库里的可执行位在 Windows 上 checkout 会丢。**用 `bash install.sh`**（不需要可执行位） |
+| `bad interpreter: /usr/bin/env bash^M` | 脚本被转成了 CRLF。`git config core.autocrlf false` 后重新 clone，或直接用 zip |
+| `找不到 Python 3.11+` | 需要 3.11+（要 `tomllib`）。装完再跑一次 |
+| `pip 装不上 mcp` | `externally-managed-environment`：建虚拟环境，或 `pip install --user mcp` |
+| `找不到 codex 命令` | codex 不在 PATH。手动执行脚本里提示的两条 `codex plugin ...` 命令 |
+
+排查代理配置：
+
+```bash
+git config --global --get http.proxy     # 看有没有写死本地代理
 ```
 
 ### 接入密钥：走剪贴板，别贴进对话
@@ -276,13 +309,28 @@ Each has a dedicated tool, and all of them were verified against real systems.
 ```bash
 git clone https://github.com/Aston-x/codex-model-switcher.git
 cd codex-model-switcher
-./install.sh                 # macOS / Linux
+bash install.sh            # use bash — no executable bit needed
 ```
 
 ```powershell
 git clone https://github.com/Aston-x/codex-model-switcher.git
 cd codex-model-switcher
-powershell -ExecutionPolicy Bypass -File .\install.ps1   # Windows
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+```
+
+No git needed either — download the zip and unpack it:
+
+```bash
+# https://github.com/Aston-x/codex-model-switcher/archive/refs/heads/main.zip
+unzip codex-model-switcher-main.zip && cd codex-model-switcher-main && bash install.sh
+```
+
+**If GitHub is unreachable, use a mirror** (works with or without a local proxy):
+
+```bash
+git clone https://ghproxy.net/https://github.com/Aston-x/codex-model-switcher.git
+# or
+git clone https://gh-proxy.com/https://github.com/Aston-x/codex-model-switcher.git
 ```
 
 The installer checks Python 3.11+, installs `mcp`, registers the marketplace,
@@ -301,6 +349,24 @@ source = '<repo directory>'
 
 [plugins."model-switcher@codex-model-switcher"]
 enabled = true
+```
+
+### Can't clone / can't run it
+
+| Symptom | Cause and fix |
+|---|---|
+| `Failed to connect to github.com:443 over proxy 127.0.0.1` | git is configured for a local proxy that **isn't running**. Start it, or bypass: `git -c http.proxy= -c https.proxy= clone ...` |
+| `Recv failure: Connection was reset` | Direct connections to GitHub get reset. **Use a mirror** (clone commands above), or the zip download |
+| `Permission denied: ./install.sh` | The executable bit is lost when checking out on Windows. **Use `bash install.sh`** — no executable bit needed |
+| `bad interpreter: /usr/bin/env bash^M` | The script got CRLF line endings. `git config core.autocrlf false` and re-clone, or use the zip |
+| `Python 3.11+ not found` | 3.11+ is required (for `tomllib`). Install it and run again |
+| `pip can't install mcp` | `externally-managed-environment`: create a venv, or `pip install --user mcp` |
+| `codex command not found` | codex isn't on PATH — run the two `codex plugin ...` commands the script prints |
+
+Check the proxy setting with:
+
+```bash
+git config --global --get http.proxy
 ```
 
 ### Passing keys: use the clipboard, never chat

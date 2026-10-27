@@ -1,6 +1,17 @@
 # 统一 LF 行尾（避免 Windows 上 CRLF 污染 diff）
 * text=auto eol=lf
 
+# shell 脚本必须是 LF —— CRLF 会让 bash 直接报
+# "bad interpreter: /usr/bin/env bash^M"，脚本根本跑不起来
+*.sh text eol=lf
+
+# Windows 批处理用 CRLF（cmd.exe 的原生行尾）
+*.cmd text eol=crlf
+
+# PowerShell 脚本用 CRLF + 保留 BOM
+# （PS 5.1 读无 BOM 的 UTF-8 .ps1，中文会按 GBK 解析成乱码）
+*.ps1 text eol=crlf
+
 # 二进制不转换
 *.png binary
 *.jpg binary
